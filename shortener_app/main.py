@@ -1,6 +1,7 @@
 import validators
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 import secrets
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from . import schemas,models
 from .database import SessionLocal, engine
@@ -27,6 +28,10 @@ def read_root():
 def raise_bad_request(message):
     raise HTTPException(status_code=400, detail=message)
 
+def raise_not_found(request):
+    message = f"URL '{request.url}' doesn't exist"
+    raise HTTPException(status_code=404, detail=message)
+
 @app.post("/url", response_model=schemas.URLInfo)
 def create_url(url: schemas.URLBase, db: Session = Depends(get_db)):
     if not validators.url(url.target_url):
@@ -50,6 +55,23 @@ def create_url(url: schemas.URLBase, db: Session = Depends(get_db)):
 #     if not validators.url(url.target_url):
 #         raise_bad_request(message="Your provided URL is not valid")
 #     return f"TODO: Create database entry for: {url.target_url}"
+
+
+@app.get("/{url_key}")
+def forward_to_target_url(
+        url_key: str,
+        request: Request,
+        db: Session = Depends(get_db)
+    ):
+    db_url = (
+        db.query(models.URL)
+        .filter(models.URL.key == url_key, models.URL.is_active)
+        .first()
+    )
+    if db_url:
+        return RedirectResponse(db_url.target_url)
+    else:
+        raise_not_found(request)
 
 
 # python -m uvicorn shortener_app.main:app --reload 
